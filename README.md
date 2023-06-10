@@ -9,7 +9,7 @@ It's based on docker images. Basically, once a new tag is pushed to the github r
 
 Note: the docker image doesn't contain any sensitive info (i.e.n no .env): environment variables are passed via the docker-compose file.
 
-![build, push, deploy](pdf/build-push-deploy.pdf)
+![build, push, deploy](pdf/build-push-deploy.png)
 
 ### Preparation steps
 
