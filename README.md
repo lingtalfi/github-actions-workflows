@@ -15,9 +15,9 @@ Note: the docker image doesn't contain any sensitive info (i.e.n no .env): envir
 
 #### Create app and prepare github repo
 
-- first create your app
+- first create your app (find my example app in apps/ci4)
 - prepare the github repo
-- prepare .gitignore
+- prepare .gitignore (find my example in apps/ci4/.gitignore)
 - push it with initial commit and check no sensitive data is pushed
 - once ok, add github secrets:
 
