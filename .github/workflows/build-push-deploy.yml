@@ -1,0 +1,132 @@
+name: Push, build, deploy
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "*"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v3
+
+      - name: Save tag number
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: test tag
+        run: echo "The tag is ${{ steps.get_version.outputs.VERSION }}"
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@f4ef78c080cd8ba55a85445d5b36e214a81df20a
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
+        with:
+          images: your_docker_user/app_id
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@3b5e8027fcad23fda98b2e3ac259d8d67585f671
+        with:
+          context: .
+          file: ./docker/php/Dockerfile
+          push: true
+          tags: your_docker_user/app_id:${{ steps.get_version.outputs.VERSION }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Create docker-compose.yml file
+        run: |
+          cat <<EOF > docker-compose.yml
+          services:
+            web:
+              image: nginx:latest
+              ports:
+                - "8000:80"
+              volumes:
+                - ./docker/nginx/conf.d/default.conf:/etc/nginx/conf.d/default.conf
+              restart: unless-stopped
+            app:
+              image: your_docker_user/app_id:${{ steps.get_version.outputs.VERSION }}
+              depends_on:
+                - db
+              environment:
+                CI_ENVIRONMENT: production
+                app_baseURL: 'https://myapp.mydomain.com/'
+                database.default.hostname: db
+                database.default.database: ${{ secrets.MYSQL_DATABASE }}
+                database.default.username: ${{ secrets.MYSQL_USER }}
+                database.default.password: ${{ secrets.MYSQL_PASSWORD }}
+                database.default.DBDriver: MySQLi
+                database.default.DBPrefix: ''
+                database.default.port: 3306
+                baby_sql.path: /var/www/html/packages/MysqlBackOfficeTools/some.babysql.txt
+                baby_sql.dynamic_mode: 'true'
+                baby_sql.execute_seeders: 'true'
+                baby_sql.db.root_user: root
+                baby_sql.db.root_pass: ${{ secrets.MYSQL_ROOT_PASSWORD }}
+                baby_sql.db.hostname: db
+                baby_sql.db.use_ci4_shield: 'true'
+                baby_sql.db.use_ci4_settings: 'true'
+                HASH_SECRET_KEY: ${{ secrets.HASH_SECRET_KEY }}
+                email.SMTPHost: ${{ secrets.EMAIL_SMTPHOST }}
+                email.SMTPUser: ${{ secrets.EMAIL_SMTPUSER }}
+                email.SMTPPass: ${{ secrets.EMAIL_SMTPPASS }}
+                email.SMTPPort: ${{ secrets.EMAIL_SMTPPORT }}
+                email.SMTPCrypto: 'tls'
+            db:
+              image: mysql:5.7
+              restart: unless-stopped
+              environment:
+                MYSQL_ROOT_PASSWORD: ${{ secrets.MYSQL_ROOT_PASSWORD }}
+                MYSQL_DATABASE: ${{ secrets.MYSQL_DATABASE }}
+                MYSQL_USER: ${{ secrets.MYSQL_USER }}
+                MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+              volumes:
+                - mysqldata:/var/lib/mysql
+                - ./docker/mysql:/docker-entrypoint-initdb.d
+          volumes:
+            mysqldata:
+          EOF
+
+      - name: Copy docker-compose.yml file to server
+        uses: appleboy/scp-action@v0.1.4
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          source: "docker-compose.yml"
+          target: "/path/to/app/"
+
+      - name: Run docker-compose up on server
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }}
+            cd /path/to/app
+            docker pull your_docker_user/app_id:${{ steps.get_version.outputs.VERSION }}
+            docker compose down
+            docker compose up -d
+
+      - name: Empty .env and docker-compose.yml files on server
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            cd /path/to/app
+            echo "" > docker-compose.yml
