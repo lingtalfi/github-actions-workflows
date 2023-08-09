@@ -82,7 +82,7 @@ Took me a long time to find those two steps, so i hope it will save you some tim
 
 ## The github action workflow
 
-The github workflow you will find in [here](.github/workflows/build-push-deploy-prod-laravel.yml).
+The github workflow you will find in [here](../.github/workflows/build-push-deploy-prod-laravel.yml).
 
 This workflow is triggered when a tag ending with the "-prod" suffix is pushed to the repo.
 It does the following:
