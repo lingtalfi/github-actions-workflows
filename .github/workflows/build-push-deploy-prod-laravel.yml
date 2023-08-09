@@ -1,0 +1,124 @@
+name: Push, build, deploy - Laravel
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "*-prod"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v3
+
+      - name: Save tag number
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: test tag
+        run: echo "The tag is ${{ steps.get_version.outputs.VERSION }}"
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@f4ef78c080cd8ba55a85445d5b36e214a81df20a
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
+        with:
+          images: your_docker_user/app_id
+
+      - name: Build and push Docker image for php app
+        uses: docker/build-push-action@3b5e8027fcad23fda98b2e3ac259d8d67585f671
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: your_docker_user/app_id:${{ steps.get_version.outputs.VERSION }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            ENV_CONTENT_BASE64=${{ secrets.ENV_CONTENT_BASE64 }}
+
+      - name: Create docker-compose.yml file
+        run: |
+          cat <<EOF > docker-compose.yml
+          version: "3"
+          services:
+              laravel.test:
+                  image: your_docker_user/app_id:${{ steps.get_version.outputs.VERSION }}
+                  ports:
+                      - 8004:80
+                  networks:
+                      - sail
+                  depends_on:
+                      - mysql
+
+              mysql:
+                  image: "mysql:8.0"
+                  environment:
+                      MYSQL_ROOT_PASSWORD: ${{ secrets.DB_PASSWORD }}
+                      MYSQL_DATABASE: ${{ secrets.DB_DATABASE }}
+                      MYSQL_USER: ${{ secrets.DB_USERNAME }}
+                      MYSQL_PASSWORD: ${{ secrets.DB_PASSWORD }}
+                  volumes:
+                      - "app_id-mysql:/var/lib/mysql"
+                  networks:
+                      - sail
+                  restart: unless-stopped
+          networks:
+              sail:
+                  driver: bridge
+          volumes:
+              app_id-mysql:
+                  driver: local
+
+          EOF
+
+      - name: Copy docker-compose.yml file to server
+        uses: appleboy/scp-action@v0.1.4
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          source: "docker-compose.yml"
+          target: "/path/to/app/"
+
+      - name: Run docker-compose up on server
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }}
+            cd /path/to/app
+            docker pull your_docker_user/app_id:${{ steps.get_version.outputs.VERSION }}
+            docker compose down
+            docker compose up -d
+
+      - name: Run app reset
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: /path/to/app/scripts/app-reset.sh
+
+      # - name: Empty docker-compose.yml files on server
+      #   uses: appleboy/ssh-action@v0.1.10
+      #   with:
+      #     host: ${{ secrets.SSH_HOST }}
+      #     username: ${{ secrets.SSH_USERNAME }}
+      #     key: ${{ secrets.SSH_PRIVATE_KEY }}
+      #     port: ${{ secrets.SSH_PORT }}
+      #     script: |
+      #       cd /path/to/app
+      #       echo "" > docker-compose.yml
