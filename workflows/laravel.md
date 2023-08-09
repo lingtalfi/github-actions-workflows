@@ -103,8 +103,8 @@ Note: to build a base64 string from a file, you can use the following command (a
 base64 .the.env.production > .env_base64
 ```
 
-- [The Dockerfile](apps/laravel/Dockerfile) is pretty straightforward. It just installs php, composer, and the php extensions needed by laravel. It also copies the nginx config file and a few other things.
-- [The nginx conf](apps/laravel/nginx.docker.conf) has nothing special, except two aliases for the build directory (built with npm build command), and to serve the uploaded files directly from the public folder of the laravel app (storage alias).
+- [The Dockerfile](../apps/laravel/Dockerfile) is pretty straightforward. It just installs php, composer, and the php extensions needed by laravel. It also copies the nginx config file and a few other things.
+- [The nginx conf](../apps/laravel/nginx.docker.conf) has nothing special, except two aliases for the build directory (built with npm build command), and to serve the uploaded files directly from the public folder of the laravel app (storage alias).
 
 ## The cleanup script
 
